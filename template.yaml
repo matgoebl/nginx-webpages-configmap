@@ -1,0 +1,108 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-webpages-${URLPATH}
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    matchLabels:
+      run: nginx-webpages-${URLPATH}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: nginx-webpages-${URLPATH}
+    spec:
+      containers:
+      - name: nginx-webpages-${URLPATH}
+        image: nginx
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: webpages-${URLPATH}
+          mountPath: "/usr/share/nginx/html"
+          readOnly: true
+      volumes:
+      - name: webpages-${URLPATH}
+        configMap:
+          name: webpages-${URLPATH}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webpages-${URLPATH}
+  namespace: ${NAMESPACE}
+data:
+${WEB_PAGES}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-webpages-${URLPATH}
+  namespace: ${NAMESPACE}
+  labels:
+    run: nginx-webpages-${URLPATH}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+  selector:
+    run: nginx-webpages-${URLPATH}
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: ${URLPATH}-stripprefix
+  namespace: ${NAMESPACE}
+spec:
+  stripPrefix:
+    prefixes:
+      - /${URLPATH}/
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: ${URLPATH}-basicauth
+  namespace: ${NAMESPACE}
+spec:
+  basicAuth:
+    removeHeader: true
+    realm: 
+    headerField: X-Auth-User
+    secret: basicauth-${URLPATH}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-${URLPATH}
+  namespace: ${NAMESPACE}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basicauth-${URLPATH}
+    nginx.ingress.kubernetes.io/auth-realm: ""
+    traefik.ingress.kubernetes.io/router.middlewares: >
+      ${NAMESPACE}-${URLPATH}-stripprefix@kubernetescrd,
+      ${NAMESPACE}-${URLPATH}-basicauth@kubernetescrd
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  rules:
+  - host: ${DNSNAME}
+    http:
+      paths:
+      - path: /${URLPATH}/
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-webpages-${URLPATH}
+            port:
+              number: 80
