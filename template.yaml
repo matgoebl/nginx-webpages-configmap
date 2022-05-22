@@ -94,6 +94,8 @@ metadata:
       ${NAMESPACE}-${URLPATH}-stripprefix@kubernetescrd,
       ${NAMESPACE}-${URLPATH}-basicauth@kubernetescrd
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+#    kubernetes.io/ingress.class: nginx
+    kubernetes.io/ingress.class: traefik
 spec:
   rules:
   - host: ${DNSNAME}
